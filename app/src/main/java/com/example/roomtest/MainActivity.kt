@@ -1,9 +1,8 @@
 package com.example.roomtest
 
+import android.content.Context
 import android.os.Bundle
-import android.provider.ContactsContract.CommonDataKinds.Email
 import android.util.Patterns
-import android.widget.AdapterView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -13,17 +12,19 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.IntState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,9 +33,22 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.room.ColumnInfo
+import androidx.room.Dao
+import androidx.room.Database
 import androidx.room.Entity
+import androidx.room.Insert
 import androidx.room.PrimaryKey
+import androidx.room.Query
+import androidx.room.Room
+import androidx.room.RoomDatabase
 import com.example.roomtest.ui.theme.RoomTestTheme
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.InternalCoroutinesApi
+import kotlinx.coroutines.internal.synchronized
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -42,72 +56,56 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             RoomTestTheme {
-                Change()
+                val test = rememberNavController()
+                NavHost(startDestination = "test1",navController = test,){
+                    composable("test1") { SignIn(test)  }
+                    composable("test2") { Login(test)  }
+                }
             }
         }
-    }
-}
-
-@Composable
-fun Change (){
-    var test = rememberNavController()
-    NavHost(startDestination = "test1",navController = test,){
-        composable("test1") { RoomTest(test)  }
-        composable("test2") { Test2(test)  }
     }
 }
 
 @Entity
 data class Test(
-    @PrimaryKey var email: Email,
+    @PrimaryKey var email: String,
     @ColumnInfo var password: String
 )
 
-@Composable
-fun RoomTest(navController: NavController){
-    var email by remember{ mutableStateOf("") }
-    var passwd by remember { mutableStateOf("") }
-    val context = LocalContext.current
+@Dao
+interface TestDao{
+    @Insert
+    suspend fun insert(user: Test)
 
-    Column (
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ){
-        Text("註 冊", fontSize = 20.sp)
+    @Query("Select * from Test WHERE email = :email And password = :password")
+    suspend fun login(email:String,password: String): Test?
+}
 
-        TextField(
-            value = email,
-            onValueChange = { email = it },
-            label = { Text("email") },
-            modifier = Modifier.padding(top = 20.dp)
-        )
+@Database(entities = [Test::class], version = 1)
+abstract class TestDatabase : RoomDatabase(){
+    abstract fun testDao(): TestDao
+}
 
-        TextField(
-            value = passwd,
-            onValueChange = { passwd = it },
-            label = { Text("passwd") },
-            modifier = Modifier.padding(20.dp)
-        )
+@OptIn(InternalCoroutinesApi::class)
+object Data {
+    @Volatile
+    private var IntState: TestDatabase? = null
 
-        Button(onClick = {
-            if(!Patterns.EMAIL_ADDRESS.matcher(email).matches()){
-                Toast.makeText(context,"false",Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(context,"true",Toast.LENGTH_SHORT).show()
-            }
-        },
-            modifier = Modifier.padding(20.dp)
-        ) {
-            Text("chick")
-        }
-
-        Text("click me to page2", modifier = Modifier.clickable { navController.navigate("test2")  })
+    fun getData(context: Context): TestDatabase {
+        return IntState ?: synchronized(this){
+            val instance = Room.databaseBuilder(
+                context.applicationContext,
+                TestDatabase::class.java,
+                "user-database"
+            ).build()
+            IntState = instance
+            IntState
+        } ?: throw IllegalArgumentException("false")
     }
 }
 
 @Composable
-fun Test2(navController: NavController){
+fun Login(navController: NavController){
     var email by remember{ mutableStateOf("") }
     var passwd by remember { mutableStateOf("") }
     val context = LocalContext.current
@@ -123,21 +121,33 @@ fun Test2(navController: NavController){
             value = email,
             onValueChange = { email = it },
             label = { Text("email") },
-            modifier = Modifier.padding(top = 20.dp)
+            modifier = Modifier.padding(top = 20.dp),
+            colors = TextFieldDefaults.colors(
+                unfocusedContainerColor = Color.Transparent,
+                focusedContainerColor = Color.Transparent
+            )
         )
 
         TextField(
             value = passwd,
             onValueChange = { passwd = it },
             label = { Text("passwd") },
-            modifier = Modifier.padding(20.dp)
+            modifier = Modifier.padding(20.dp),
+            colors = TextFieldDefaults.colors(
+                unfocusedContainerColor = Color.Transparent,
+                focusedContainerColor = Color.Transparent
+            )
         )
 
         Button(onClick = {
             if(!Patterns.EMAIL_ADDRESS.matcher(email).matches()){
                 Toast.makeText(context,"false",Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(context,"true",Toast.LENGTH_SHORT).show()
+                CoroutineScope(Dispatchers.IO).launch {
+                    withContext(Dispatchers.Main){
+                        Toast.makeText(context,"登入成功",Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
         },
             modifier = Modifier.padding(20.dp)
@@ -146,5 +156,60 @@ fun Test2(navController: NavController){
         }
 
         Text("click me to page1", modifier = Modifier.clickable { navController.navigate("test1")  })
+    }
+}
+
+@OptIn(DelicateCoroutinesApi::class)
+@Composable
+fun SignIn(navController: NavController){
+    var email by remember{ mutableStateOf("") }
+    var passwd by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val db = remember { Data.getData(context) }
+
+    Column (
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ){
+        Text("註 冊", fontSize = 20.sp)
+
+        TextField(
+            value = email,
+            onValueChange = { email = it },
+            label = { Text("email") },
+            modifier = Modifier.padding(top = 20.dp),
+            colors = TextFieldDefaults.colors(
+                unfocusedContainerColor = Color.Transparent,
+                focusedContainerColor = Color.Transparent
+            )
+        )
+
+        TextField(
+            value = passwd,
+            onValueChange = { passwd = it },
+            label = { Text("passwd") },
+            modifier = Modifier.padding(20.dp),
+            colors = TextFieldDefaults.colors(
+                unfocusedContainerColor = Color.Transparent,
+                focusedContainerColor = Color.Transparent
+            )
+        )
+
+        Button(onClick = {
+            if(!Patterns.EMAIL_ADDRESS.matcher(email).matches()){
+                Toast.makeText(context,"false",Toast.LENGTH_SHORT).show()
+            } else {
+                val user = Test(email = email, password = passwd)
+                kotlinx.coroutines.GlobalScope.launch {
+                    db.testDao().insert(user)
+                }
+                Toast.makeText(context,"註冊成功",Toast.LENGTH_SHORT).show()
+            }
+        },
+            modifier = Modifier.padding(20.dp)
+        ) { Text("chick") }
+
+        Text("click me to page2", modifier = Modifier.clickable { navController.navigate("test2")  })
     }
 }
