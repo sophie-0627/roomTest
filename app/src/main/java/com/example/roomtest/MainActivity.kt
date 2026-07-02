@@ -165,7 +165,7 @@ fun SignIn(navController: NavController){
     var email by remember{ mutableStateOf("") }
     var passwd by remember { mutableStateOf("") }
     val context = LocalContext.current
-    val db = remember { Data.getData(context) }
+    val db = remember { Data.getData(context    ) }
 
     Column (
         modifier = Modifier.fillMaxSize(),
